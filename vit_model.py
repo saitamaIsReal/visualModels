@@ -95,87 +95,89 @@ class VisionTransformer(nn.Module):
         cls_token_final = x[:, 0]             # Nur das [CLS] Token nehmen
         out = self.mlp_head(cls_token_final)  # Klassifikations-MLP
         return out
+    
 
-# 1. **Datenvorbereitung**
-transform = transforms.Compose([
-    transforms.Resize((32, 32)),  # Größe des Bildes für ViT (32x32)
-    transforms.ToTensor(),        # Umwandlung in Tensor
-    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # Normalisierung
-])
+if __name__ == "__main__":
+    # 1. **Datenvorbereitung**
+    transform = transforms.Compose([
+        transforms.Resize((32, 32)),  # Größe des Bildes für ViT (32x32)
+        transforms.ToTensor(),        # Umwandlung in Tensor
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # Normalisierung
+    ])
 
-# Lade den CIFAR-10-Datensatz
-trainset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
-testset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
+    # Lade den CIFAR-10-Datensatz
+    trainset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
+    testset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 
-# DataLoader für Trainings- und Testset
-trainloader = DataLoader(trainset, batch_size=64, shuffle=True)
-testloader = DataLoader(testset, batch_size=64, shuffle=False)
+    # DataLoader für Trainings- und Testset
+    trainloader = DataLoader(trainset, batch_size=64, shuffle=True)
+    testloader = DataLoader(testset, batch_size=64, shuffle=False)
 
-# 2. **Modell-Initialisierung**
-config = ViTConfig()  # Konfiguration des ViT-Modells
-model = VisionTransformer(config)  # Modell erstellen
+    # 2. **Modell-Initialisierung**
+    config = ViTConfig()  # Konfiguration des ViT-Modells
+    model = VisionTransformer(config)  # Modell erstellen
 
-# Überprüfe, ob CUDA verfügbar ist und setze das Gerät
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Training auf: {device}")
+    # Überprüfe, ob CUDA verfügbar ist und setze das Gerät
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Training auf: {device}")
 
-# Das Modell auf das richtige Gerät verschieben
-model = model.to(device)
-# Debug: Gerät des Modells anzeigen
-print(next(model.parameters()).device)
-
-
-# 3. **Verlustfunktion und Optimierer**
-criterion = nn.CrossEntropyLoss()  # Verlustfunktion für Klassifikation
-optimizer = optim.Adam(model.parameters(), lr=0.001)  # Adam Optimierer
-
-# 4. **Trainingsschleife**
-num_epochs = 10  # Anzahl der Epochen
-
-for epoch in range(num_epochs):
-    model.train()  # Setzt das Modell in den Trainingsmodus
-    running_loss = 0.0
-
-    for i, (inputs, labels) in enumerate(trainloader):
-        # Verschiebe Eingabedaten und Labels auf das gleiche Gerät und stelle den richtigen Datentyp sicher
-        inputs, labels = inputs.to(device), labels.to(device)
-
-        optimizer.zero_grad()  # Setzt den Gradienten auf null
-
-        # Erzwungene Typ- und Gerätekompatibilität in der forward-Methode
-        outputs = model(inputs.to(device).float())  # Typ explizit setzen für sicherstellen von Float-Tensoren
-        loss = criterion(outputs, labels)  # Verlustberechnung
-        loss.backward()  # Backpropagation
-        optimizer.step()  # Optimierer-Schritt
-
-        running_loss += loss.item()
-
-        # Alle 100 Schritte die Verlustausgabe anzeigen
-        if i % 100 == 99:
-            print(f"Epoch [{epoch + 1}/{num_epochs}], Step [{i + 1}], Loss: {running_loss / 100:.4f}")
-            running_loss = 0.0
-
-print("Training abgeschlossen")
+    # Das Modell auf das richtige Gerät verschieben
+    model = model.to(device)
+    # Debug: Gerät des Modells anzeigen
+    print(next(model.parameters()).device)
 
 
+    # 3. **Verlustfunktion und Optimierer**
+    criterion = nn.CrossEntropyLoss()  # Verlustfunktion für Klassifikation
+    optimizer = optim.Adam(model.parameters(), lr=0.001)  # Adam Optimierer
+
+    # 4. **Trainingsschleife**
+    num_epochs = 10  # Anzahl der Epochen
+
+    for epoch in range(num_epochs):
+        model.train()  # Setzt das Modell in den Trainingsmodus
+        running_loss = 0.0
+
+        for i, (inputs, labels) in enumerate(trainloader):
+            # Verschiebe Eingabedaten und Labels auf das gleiche Gerät und stelle den richtigen Datentyp sicher
+            inputs, labels = inputs.to(device), labels.to(device)
+
+            optimizer.zero_grad()  # Setzt den Gradienten auf null
+
+            # Erzwungene Typ- und Gerätekompatibilität in der forward-Methode
+            outputs = model(inputs.to(device).float())  # Typ explizit setzen für sicherstellen von Float-Tensoren
+            loss = criterion(outputs, labels)  # Verlustberechnung
+            loss.backward()  # Backpropagation
+            optimizer.step()  # Optimierer-Schritt
+
+            running_loss += loss.item()
+
+            # Alle 100 Schritte die Verlustausgabe anzeigen
+            if i % 100 == 99:
+                print(f"Epoch [{epoch + 1}/{num_epochs}], Step [{i + 1}], Loss: {running_loss / 100:.4f}")
+                running_loss = 0.0
+
+    print("Training abgeschlossen")
 
 
-# 5. **Evaluierung auf dem Testset**
-model.eval()  # Setzt das Modell in den Evaluierungsmodus
-correct = 0
-total = 0
 
-with torch.no_grad():  # Keine Gradientenberechnung für den Test
-    for inputs, labels in testloader:
-        inputs, labels = inputs.to(device), labels.to(device)
-        outputs = model(inputs)
-        _, predicted = torch.max(outputs, 1)  # Vorhersage mit höchster Wahrscheinlichkeit
-        total += labels.size(0)
-        correct += (predicted == labels).sum().item()
 
-accuracy = 100 * correct / total
-print(f"Test Accuracy: {accuracy:.2f}%")
+    # 5. **Evaluierung auf dem Testset**
+    model.eval()  # Setzt das Modell in den Evaluierungsmodus
+    correct = 0
+    total = 0
 
-# Modell speichern (nach dem Training)
-torch.save(model.state_dict(), 'vision_transformer_model.pth')
-print("Modell wurde gespeichert als 'vision_transformer_model.pth'")
+    with torch.no_grad():  # Keine Gradientenberechnung für den Test
+        for inputs, labels in testloader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs)
+            _, predicted = torch.max(outputs, 1)  # Vorhersage mit höchster Wahrscheinlichkeit
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    accuracy = 100 * correct / total
+    print(f"Test Accuracy: {accuracy:.2f}%")
+
+    # Modell speichern (nach dem Training)
+    torch.save(model.state_dict(), 'vision_transformer_model.pth')
+    print("Modell wurde gespeichert als 'vision_transformer_model.pth'")
