@@ -1,0 +1,31 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Logfiles & Outputs
+*.log
+*.out
+
+# Modell-Dateien (nicht mit Git tracken)
+*.pth
+
+# Datenordner (falls du große Datasets nutzt)
+data/
+
+# Umgebung (nur env.yaml versionieren)
+env/
+*.env
+*.yml_backup
+
+# VS Code & andere IDE Files
+.vscode/
+.idea/
+*.swp
+
+# Mac & Windows system files
+.DS_Store
+Thumbs.db
+
+# Jupyter Checkpoints (nur falls du Jupyter nutzt)
+.ipynb_checkpoints/
