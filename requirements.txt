@@ -1,0 +1,8 @@
+torch
+torchvision
+transformers
+shapiq
+pillow
+requests
+scikit-image
+jupyterlab      # oder notebook
