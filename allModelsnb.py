@@ -161,7 +161,7 @@ for model_name in models:
         random_state=42
     )
     result = approximator.approximate(
-        budget=300,
+        budget=50000,
         game=lambda c: value_function(
             c,
             processor, model, device, image,
