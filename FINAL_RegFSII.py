@@ -127,7 +127,7 @@ def main():
         random_state=42
     )
     result = approximator.approximate(
-        budget=80000,
+        budget=300,
         game=value_function,
         return_interactions=False
     )
