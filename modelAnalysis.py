@@ -1,20 +1,4 @@
-# Here's a Jupytext‐compatible Python script using the “percent” format.
-# You can save this as `fsii_models.py` and then run:
-#   jupytext --to notebook fsii_models.py
-# to get a ready-to-run `.ipynb`.
-
-# %% [markdown]
-# # FSII Analysis with Multiple Vision Models
-#
-# This notebook demonstrates how to:
-# 1. Load several HuggingFace vision models (ViT, DeiT, custom).
-# 2. Split an input image into patches and visualize the grid.
-# 3. Define a masking function that grays out selected patches.
-# 4. Compute class logits on masked images.
-# 5. Approximate 2nd-order Faithful Shapley Interaction Indices (FSII) with SHAPIQ.
-# 6. Display the top‑5 interacting patch‑pairs on the image for each model.
-
-# %%
+#!/usr/bin/env python3
 import sys
 import torch
 import numpy as np
@@ -26,13 +10,11 @@ from typing import Union
 from shapiq.approximator.regression import RegressionFSII
 from IPython.display import display
 
-# %%
-# === Parameter & Device ===
+# Model selection
 models = [
-   # "google/vit-base-patch32-384",
+    "google/vit-base-patch32-384",
     "facebook/deit-tiny-patch16-224",
-   # "akahana/vit-base-cats-vs-dogs",
-    # add more HF vision-model IDs here
+    "akahana/vit-base-cats-vs-dogs",
 ]
 
 image_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/cats.png"
@@ -41,8 +23,29 @@ print("Running on device:", device)
 if device.type == "cuda":
     print(" CUDA device name:", torch.cuda.get_device_name())
 
-# %%
-# === Helper functions ===
+
+# Helper Functions
+def create_heatmap_overlay(image: Image.Image, shapley_values: np.ndarray, n_patches_per_row: int, cell: int) -> Image.Image:
+    norm_vals = (shapley_values - np.min(shapley_values)) / (np.ptp(shapley_values) + 1e-8)
+    overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    for idx, val in enumerate(norm_vals):
+        r, c = divmod(idx, n_patches_per_row)
+        x1, y1 = c * cell, r * cell
+        x2, y2 = x1 + cell, y1 + cell
+        red = int(val * 255)
+        draw.rectangle([x1, y1, x2, y2], fill=(red, 0, 0, 120))
+    return Image.alpha_composite(image.convert("RGBA"), overlay)
+
+def combine_side_by_side(images):
+    total_width = sum(img.width for img in images)
+    max_height = max(img.height for img in images)
+    combined = Image.new("RGBA", (total_width, max_height))
+    x_offset = 0
+    for img in images:
+        combined.paste(img, (x_offset, 0))
+        x_offset += img.width
+    return combined
 
 def mask_image_grid(
     img: Image.Image,
@@ -52,7 +55,7 @@ def mask_image_grid(
     cell: int
 ) -> Image.Image:
     """
-    Gray out patches where coalition[i] is False.
+    Graying out patches where coalition[i] is False (0).
     """
     arr  = np.array(img.resize((image_size, image_size))).copy()
     coal = np.asarray(coalition, dtype=bool)
@@ -64,7 +67,6 @@ def mask_image_grid(
             arr[y1:y2, x1:x2] = 128
     return Image.fromarray(arr)
 
-# %%
 def draw_grid(
     img: Image.Image,
     n_patches_per_row: int,
@@ -83,7 +85,6 @@ def draw_grid(
             draw.text((x1+2, y1+2), str(idx), fill="gray")
     display(img)
 
-# %%
 def value_function(
     coalitions: np.ndarray,
     processor,
@@ -107,37 +108,37 @@ def value_function(
         out.append(logit)
     return np.array(out)
 
-# %% [markdown]
-# ## Main loop over models
+#=======MAIN=======
+heatmaps_per_model = []  # Liste vorbereiten
 
-# %%
 for model_name in models:
     print(f"\n--- Evaluating {model_name} ---")
 
-    # 1) load processor & model
+# 1) load processor & model
     processor = AutoImageProcessor.from_pretrained(model_name)
     model     = AutoModelForImageClassification.from_pretrained(model_name).to(device).eval()
 
-    # 2) extract patch & image config
+# 2) extract patch & image config
     patch_size        = model.config.patch_size
     image_size        = model.config.image_size
     n_patches_per_row = image_size // patch_size
     n_patches         = n_patches_per_row**2
     cell = patch_size
 
-    # 3) load & show grid
+# 3) load & show grid
     resp  = requests.get(image_url)
     image = Image.open(BytesIO(resp.content)).convert("RGB").resize((image_size,image_size))
     draw_grid(image.copy(), n_patches_per_row, cell)
 
-    # 4) determine target class
+ # 4) determine target class
     inputs = processor(images=image, return_tensors="pt").to(device)
     with torch.no_grad():
         logits = model(**inputs).logits
     predicted_class = int(logits.argmax(-1))
     print("Predicted class:", model.config.id2label[predicted_class])
+    print("predicted logits:", logits[0,predicted_class])
 
-    # 5) quick-check full vs. empty
+# 5) quick-check full vs. empty
     full  = value_function(
         np.array([np.ones(n_patches, bool)]),
         processor, model, device, image,
@@ -153,7 +154,8 @@ for model_name in models:
     print(f" Logit full:  {full:.2f}")
     print(f" Logit empty: {empty:.2f}")
 
-    # 6) FSII approx
+
+# 6) FSII approx
     approximator = RegressionFSII(
         n=n_patches,
         max_order=2,
@@ -161,7 +163,7 @@ for model_name in models:
         random_state=42
     )
     result = approximator.approximate(
-        budget=30,
+        budget=3,
         game=lambda c: value_function(
             c,
             processor, model, device, image,
@@ -170,29 +172,11 @@ for model_name in models:
         )
     )
 
-    # 7) top‑5 2nd‑order interactions
-    fsii_map = result.dict_values
-    second   = {p:v for p,v in fsii_map.items() if len(p)==2}
-    top5     = sorted(second.items(), key=lambda kv: abs(kv[1]), reverse=True)[:5]
-    print(" Top-5 FSII 2nd-order:")
-    for i,(pair,val) in enumerate(top5,1):
-        print(f"  {i}. {pair} → {val:.4f}")
+    shapley_values = np.array([result.dict_values[(i,)] for i in range(n_patches)])
+    heatmap_img = create_heatmap_overlay(image, shapley_values, n_patches_per_row, cell)
+    heatmaps_per_model.append(heatmap_img)
 
-    # 8) visualize on image
-    vis   = image.copy()
-    draw  = ImageDraw.Draw(vis)
-    colors= ["red","blue","green","yellow","purple"]
-    drawn = set()
-    for idx,(i,j) in enumerate([p for p,_ in top5]):
-        col = colors[idx]
-        for patch in (i,j):
-            if patch in drawn: continue
-            drawn.add(patch)
-            r, c = divmod(patch, n_patches_per_row)
-            x1,y1 = c*cell, r*cell
-            x2,y2 = x1+cell, y1+cell
-            draw.rectangle([x1,y1,x2,y2], outline=col, width=3)
-            draw.text((x1+2,y1+2), str(idx+1), fill=col)
-    display(vis)
 
-print("\n✅ Done.")
+    final_img = combine_side_by_side([img1, img2, img3])
+    final_img.save("vergleich_heatmaps.jpg")
+    final_img.show()

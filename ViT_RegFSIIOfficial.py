@@ -102,7 +102,7 @@ def main():
     approximator = RegressionFSII(
         n=n_patches,
         max_order=2,
-        pairing_trick=False,    # kannst hier True/False probieren
+        pairing_trick=True,    # kannst hier True/False probieren
         random_state=42
     )
     result = approximator.approximate(
