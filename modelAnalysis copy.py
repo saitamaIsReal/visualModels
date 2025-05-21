@@ -211,10 +211,9 @@ for img_idx, image_path in enumerate(image_paths):
             max_order=2,
             pairing_trick=False,
             random_state=42,
-            n_jobs=-1
         )
         result = approximator.approximate(
-            budget = 64000,
+            budget = 1000,
             game=lambda c: value_function(
                 c,
                 processor, model, device, image,
